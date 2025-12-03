@@ -59,9 +59,8 @@ VD fn_lcd_task(VD) {
       // 1行目のテキストを表示
       display.println("SSD1306 OLED Test");
 
-      // テキストサイズを変更して2行目を表示
-      display.println("Hello!");
-
+      
+      display.setTextSize(2);
       display.print(AU1_SOFTVERSION);
 
       // 描画した内容を物理ディスプレイに表示

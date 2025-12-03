@@ -1,4 +1,6 @@
-/*** include ***/
+/*** DESCRIPTION ***/
+
+/*** INCLUDE ***/
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
 #include <OneWire.h>
@@ -6,33 +8,78 @@
 
 #include "common.h"
 #include "sensor.h"
- 
+
+/*** MACRO DEFINITIONS ***/
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 2
 
 // 最大デバイス数 (必要に応じて変更してください)
 #define MAX_DEVICES 10
 
-// 検出されたデバイスのアドレスを保存する配列 (各アドレスは8バイト)
-DeviceAddress tempSensorAddress[MAX_DEVICES];
-U1 numberOfDevices; // 検出されたデバイスの総数
-
 // タスク実行間隔 (ミリ秒)
 #define SENSOR_TASK_DELAY_MS 1000
 
+// STM状態定義
+#define STM_STATE_INIT 0
+#define STM_STATE_RUNNING 1
+#define STM_STATE_IDLE 2
+
+/*** GLOBAL VARIABLES DEFINITION ***/
+
+/*** LOCAL VARIABLES DEFINITION ***/
+// 検出されたデバイスのアドレスを保存する配列 (各アドレスは8バイト)
+DeviceAddress ast_g_sensor_temp_sensor_address[MAX_DEVICES];
+
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(ONE_WIRE_BUS);
+OneWire st_g_sensor_onewire(ONE_WIRE_BUS);
 
 // Pass our oneWire reference to Dallas Temperature.
-DallasTemperature sensors(&oneWire);
+DallasTemperature st_g_sensor_sensors(&st_g_sensor_onewire);
 
-int count = 0;
+U1 u1_g_sensor_number_of_devices; // 検出されたデバイスの総数
+U1 u1_g_sensor_stm_state; // STM状態変数
 
+/*** LOCAL FUNCTION DECLARE ***/
+
+/*** EXTERNAL FUNCTION DEFINITION ***/
 VD fn_sensor_init(VD){
-  Serial.println("--- Sensor Initialization Start ---");
+    Serial.println("--- Sensor Initialization Start ---");
+    u1_g_sensor_stm_state = STM_STATE_INIT; 
 
-  // Dallas Temperatureライブラリの初期化
-  sensors.begin();
+    // Dallas Temperatureライブラリの初期化
+    st_g_sensor_sensors.begin();
+}
+
+VD fn_sensor_task(VD){
+    Serial.println("Sensor Task RUNNING...");
+
+    switch(u1_g_sensor_stm_state){
+        case STM_STATE_INIT:
+            // 接続されているデバイス数を取得
+            u1_g_sensor_number_of_devices = st_g_sensor_sensors.getDeviceCount();
+            Serial.print("Found ");
+            Serial.print(u1_g_sensor_number_of_devices, DEC);
+            Serial.println(" devices.");
+            u1_g_sensor_stm_state = STM_STATE_IDLE;
+            break;
+
+        case STM_STATE_RUNNING:
+            //do nothing
+            break;
+
+        case STM_STATE_IDLE:
+            //do nothing
+            break;
+    }
+}
+
+/*** LOCAL FUNCTION DEFINITION ***/
+
+
+
+/* old code
+
+
 
   // 接続されているデバイス数を取得
   numberOfDevices = sensors.getDeviceCount();
@@ -103,3 +150,4 @@ VD fn_sensor_task(VD){
 
 
 }
+*/

@@ -2,17 +2,25 @@
 
 #include "common.h"
 #include "lcd.h"
+#include "sensor.h"
 
 /*** MACRO DEFINITIONS ***/
+#define U1_SENSOR_TASK 1
+#define U1_LCD_TASK 2
 
 /*** GLOBAL VARIABLES DEFINITION ***/
 
 /*** LOCAL VARIABLES DEFINITION ***/
 volatile unsigned long toggle_counter = 0;
 FG fg_g_lcd_task_req = 0;
+FG fg_g_sensor_task_req = 0;
+
+U4 u4_g_startTime;
+U4 u4_g_endTime;
 
 /*** LOCAL FUNCTION DECLARE ***/
-
+VD fn_main_task_start(U1 u1_task_id);
+VD fn_main_task_end(U1 u1_task_id);
 
 /*** EXTERNAL FUNCTION DEFINITION ***/
 
@@ -47,19 +55,34 @@ void setup() {
   // グローバル変数の初期化
   toggle_counter = 0;
   fg_g_lcd_task_req = 0;
+  fg_g_sensor_task_req = 0;
   
   // 下記機能の初期化
   Serial.begin(9600);
+  Serial.print("Software Version: ");
+  Serial.println(AU1_SOFTVERSION);
+  Serial.println("System Init Start");
+
   fn_lcd_init();
+  fn_sensor_init();
 
   // Timer1の設定を呼び出し(計測開始)
   setupTimer1();
 }
 
 void loop() {
+
   if (fg_g_lcd_task_req == 1) {
     fg_g_lcd_task_req = 0;
+    fn_main_task_start(U1_LCD_TASK);
     fn_lcd_task();
+    fn_main_task_end(U1_LCD_TASK);
+  }
+  if (fg_g_sensor_task_req == 1) {
+    fg_g_sensor_task_req = 0;
+    fn_main_task_start(U1_SENSOR_TASK);
+    fn_sensor_task();
+    fn_main_task_end(U1_SENSOR_TASK);
   }
 }
 
@@ -72,6 +95,22 @@ ISR(TIMER1_COMPA_vect) {
 
   if (toggle_counter >= 1000) {
     fg_g_lcd_task_req = 1;
+    fg_g_sensor_task_req = 1;
     toggle_counter = 0;  // カウンターをリセット
   }
+}
+
+VD fn_main_task_start(U1 u1_task_id) {
+  u4_g_startTime = micros();
+}
+
+VD fn_main_task_end(U1 u1_task_id) {
+  u4_g_endTime = micros();
+  if(u1_task_id == U1_LCD_TASK)
+      Serial.print("LCD Task Execution Time: ");
+  else if(u1_task_id == U1_SENSOR_TASK){
+    Serial.print("Sensor Task Execution Time: ");
+  }
+  Serial.print(u4_g_endTime - u4_g_startTime);
+  Serial.println(" us");
 }

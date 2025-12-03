@@ -1,7 +1,7 @@
 #ifndef COMMON_H
 #define	COMMON_H
 
-#define AU1_SOFTVERSION "Ver00.00.03"
+#define AU1_SOFTVERSION "V00.01.09"
 
 #define VD void
 #define FG bool
@@ -18,3 +18,20 @@
 
 #endif	/* COMMON_H */
 
+/*** code temprate ***/
+
+/*** DESCRIPTION ***/
+
+/*** INCLUDE ***/
+
+/*** MACRO DEFINITIONS ***/
+
+/*** GLOBAL VARIABLES DEFINITION ***/
+
+/*** LOCAL VARIABLES DEFINITION ***/
+
+/*** LOCAL FUNCTION DECLARE ***/
+
+/*** EXTERNAL FUNCTION DEFINITION ***/
+
+/*** LOCAL FUNCTION DEFINITION ***/
