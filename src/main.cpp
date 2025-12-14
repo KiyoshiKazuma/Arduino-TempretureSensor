@@ -5,6 +5,7 @@
 #include "lcd.h"
 //#include "sensor.h"
 #include "sevenseg.h"
+#include "bme280.h"
 
 /*** MACRO DEFINITIONS ***/
 #define U1_SENSOR_TASK 1
@@ -27,6 +28,7 @@ FG fg_g_sensor_task_req = 0;
 FG fg_g_sevenseg_task_req = 0;
 FG fg_g_i2c_task_req = 0;
 FG fg_g_debug_req = 0;
+FG fg_g_bme280_task_req = 0;
 
 U4 u4_g_startTime;
 U4 u4_g_endTime;
@@ -72,6 +74,7 @@ void setup() {
   fg_g_lcd_task_req = 0;
   fg_g_sensor_task_req = 0;
   fg_g_sevenseg_task_req = 0;
+  fg_g_bme280_task_req = 0;
   fg_g_debug_req = 0;
   
   // 下記機能の初期化
@@ -83,6 +86,7 @@ void setup() {
   fn_sevenseg_init();
   fn_i2c_if_init();
   fn_lcd_init();
+  fn_bme280_init();
   //fn_sensor_init();
 
   // Timer1の設定を呼び出し(計測開始)
@@ -110,6 +114,11 @@ void loop() {
     fn_main_task_start(U1_SEVENSEG_TASK);
     fn_sevenseg_cyc();
     fn_main_task_end(U1_SEVENSEG_TASK);
+  }
+
+  if(fg_g_bme280_task_req == 1){
+    fg_g_bme280_task_req = 0;
+    fn_bme280_cyc();
   }
 
   if(fg_g_i2c_task_req == 1){
@@ -142,6 +151,7 @@ ISR(TIMER1_COMPA_vect) {
   fg_g_lcd_task_req = 1;
   fg_g_sevenseg_task_req = 1;
   fg_g_i2c_task_req = 1;
+  fg_g_bme280_task_req = 1;
 }
 
 VD fn_main_task_start(U1 u1_task_id) {
