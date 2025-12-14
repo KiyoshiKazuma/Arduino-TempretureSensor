@@ -28,10 +28,17 @@
 
 /*** GLOBAL VARIABLES DEFINITION ***/
 
-/*** LOCAL VARIABLES DEFINITION ***/
-
 /*** LOCAL FUNCTION DECLARE ***/
 
 /*** EXTERNAL FUNCTION DEFINITION ***/
 
 /*** LOCAL FUNCTION DEFINITION ***/
+
+
+
+/*!
+@brief 関数の要約
+@param 引数名　引数の詳細引数の個数分かく
+@return 戻り値の詳細
+@details 関数の細かい説明
+*/
