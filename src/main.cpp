@@ -2,7 +2,7 @@
 
 #include "common.h"
 #include "i2c_if.h"
-//#include "lcd.h"
+#include "lcd.h"
 //#include "sensor.h"
 #include "sevenseg.h"
 
@@ -82,7 +82,7 @@ void setup() {
 
   fn_sevenseg_init();
   fn_i2c_if_init();
-  //fn_lcd_init();
+  fn_lcd_init();
   //fn_sensor_init();
 
   // Timer1の設定を呼び出し(計測開始)
@@ -93,12 +93,12 @@ void setup() {
 
 void loop() {
 
-//  if (fg_g_lcd_task_req == 1) {
-//    fg_g_lcd_task_req = 0;
-//    fn_main_task_start(U1_LCD_TASK);
-//    fn_lcd_task();
-//    fn_main_task_end(U1_LCD_TASK);
-//  }
+ if (fg_g_lcd_task_req == 1) {
+   fg_g_lcd_task_req = 0;
+   fn_main_task_start(U1_LCD_TASK);
+   fn_lcd_cyc();
+   fn_main_task_end(U1_LCD_TASK);
+ }
 //  if (fg_g_sensor_task_req == 1) {
 //    fg_g_sensor_task_req = 0;
 //    fn_main_task_start(U1_SENSOR_TASK);
@@ -113,7 +113,7 @@ void loop() {
   }
 
   if(fg_g_i2c_task_req == 1){
-    fg_g_i2c_task_req = 0;
+    //fg_g_i2c_task_req = 0;
     fn_main_task_start(U1_I2C_TASK);
     fn_i2c_if_cyc();
     fn_main_task_end(U1_I2C_TASK);
@@ -135,11 +135,11 @@ ISR(TIMER1_COMPA_vect) {
   toggle_counter++;
 
   if (toggle_counter >= 1000) {
-    fg_g_lcd_task_req = 1;
     fg_g_sensor_task_req = 1;
     fg_g_debug_req = 1;
     toggle_counter = 0;  // カウンターをリセット
   }
+  fg_g_lcd_task_req = 1;
   fg_g_sevenseg_task_req = 1;
   fg_g_i2c_task_req = 1;
 }
@@ -203,29 +203,14 @@ VD fn_main_debug_cyc(VD){
     u1_s_debug_sevenseg_cnt = 0;
   }
 
-  /* i2c debug */
-  U1 u1_t_debug_i2c_tgt_addr = 0x50;
-  U1 au1_t_debug_i2c_data[11] = {"Hello I2C"};
-  U1 u1_t_debug_i2c_len=11;
-  FG fg_t_debug_i2c_res;
-
-  Serial.print("I2C TX Request to Address: 0x");
-  Serial.println(u1_t_debug_i2c_tgt_addr, HEX);
-
-  fg_t_debug_i2c_res = fg_i2c_if_request_tx(u1_t_debug_i2c_tgt_addr, au1_t_debug_i2c_data, u1_t_debug_i2c_len);
-
-  if(fg_t_debug_i2c_res == true){
-    Serial.println("I2C TX Request Success");
-  }else{
-    Serial.println("I2C TX Request Failed");
+  /* lcd debug */
+  static FG fg_s_dbug_lcd_first_flag = true;
+  U1 au1_debug_lcd_str[] = {"Hello World!"};
+  if(fg_s_dbug_lcd_first_flag == true){
+    if(fg_lcd_is_busy() == false){
+      Serial.println("LCD Print Request: Hello World!");
+      u1_lcd_print_request((const char *)au1_debug_lcd_str);
+      fg_s_dbug_lcd_first_flag = false;
+    }
   }
-  
-  fg_t_debug_i2c_res = fg_i2c_if_request_tx(u1_t_debug_i2c_tgt_addr, au1_t_debug_i2c_data, u1_t_debug_i2c_len);
-
-  if(fg_t_debug_i2c_res == true){
-    Serial.println("I2C TX Request Success");
-  }else{
-    Serial.println("I2C TX Request Failed");
-  }
-
 }
