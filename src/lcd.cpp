@@ -11,7 +11,7 @@
 
 /*** MACRO DEFINITIONS ***/
 #define LCD_ADDRESS 0x3c
-//#define LCD_ADDRESS 0x50
+// #define LCD_ADDRESS 0x50
 
 #define LCD_INIT_SEQUENCE_STEP (19U)
 #define LCD_CHAR_NUM (256U)
@@ -131,8 +131,10 @@ ST_LCD_CTRL st_g_lcd_ctrl;
 U1 u1_lcd_init_task(VD);
 U1 u1_lcd_clear_task(VD);
 U1 u1_lcd_print_task(VD);
+U1 u1_lcd_set_cursor_task(VD);
 
 U1 u1_lcd_write_char(U1 u1_a_char);
+U1 u1_lcd_send_cmd(U1 *au1_a_data_buf, U1 au1_a_len);
 
 U1 u1_lcd_send_cmd_set(ST_LCD_CMD_SET *pst_a_cmd_set);
 U1 u1_lcd_send_data(U1 *au1_a_data_buf, U1 au1_a_len);
@@ -169,6 +171,9 @@ VD fn_lcd_init(VD)
 VD fn_lcd_cyc(VD)
 {
     U1 u1_t_func_result;
+    U1 u1_t_start_state;
+
+    u1_t_start_state = st_g_lcd_ctrl.state;
 
     switch (st_g_lcd_ctrl.state) {
         case LCD_STM_IDLE:
@@ -198,17 +203,24 @@ VD fn_lcd_cyc(VD)
                 st_g_lcd_ctrl.state = LCD_STM_IDLE;
             }
             break;
-        // case LCD_STM_SET_CURSOR:
+        case LCD_STM_SET_CURSOR:
             // /* do lcd set cursor task */
             // /* if lcd set cursor task completed (function return is STD_RETURN_OK) change stm next state(LCD_STM_IDLE)*/
-            // u1_t_func_result = u1_lcd_set_cursor_task();
-            // if (u1_t_func_result == STD_RETURN_OK) {
-                // st_g_lcd_ctrl.state = LCD_STM_IDLE;
-            // }
-            // break;            
+            u1_t_func_result = u1_lcd_set_cursor_task();
+            if (u1_t_func_result == STD_RETURN_OK) {
+                st_g_lcd_ctrl.state = LCD_STM_IDLE;
+            }
+            break;            
         default:
             st_g_lcd_ctrl.state = LCD_STM_IDLE;
             break;
+    }
+
+    if (u1_t_start_state != st_g_lcd_ctrl.state) {
+        Serial.print("LCD State Changed: ");
+        Serial.print(u1_t_start_state);
+        Serial.print(" -> ");
+        Serial.println(st_g_lcd_ctrl.state);
     }
 
     return;
@@ -241,6 +253,26 @@ U1 u1_lcd_print_request(const char *str) {
             st_g_lcd_ctrl.state = LCD_STM_PRINT;
             u1_t_ret = STD_RETURN_OK;
         }
+    }
+    return u1_t_ret;
+}
+
+/*!
+@brief LCDカーソルセット
+@param u1_a_page : ページ番号
+@param u1_a_column : 列番号
+@return STD_RETURN_OK:表示リクエスト完了
+@return STD_RETURN_NG:表示リクエスト中
+@details LCDのカーソルを移動するリクエストを処理する。
+*/
+U1 u1_lcd_set_cursor(U1 u1_a_page, U1 u1_a_column){
+    U1 u1_t_ret;
+    u1_t_ret = STD_RETURN_NG;
+    if (st_g_lcd_ctrl.state == LCD_STM_IDLE) {
+        st_g_lcd_ctrl.state = LCD_STM_SET_CURSOR;
+        st_g_lcd_ctrl.cursor_page = u1_a_page;
+        st_g_lcd_ctrl.cursor_column = u1_a_column;
+        u1_t_ret = STD_RETURN_OK;
     }
     return u1_t_ret;
 }
@@ -345,6 +377,40 @@ U1 u1_lcd_print_task(VD) {
     return u1_t_ret;
 }
 
+
+U1 u1_lcd_set_cursor_task(VD){
+    static U1 u1_s_sequence_num = 0U;
+    U1 u1_t_ret = STD_RETURN_NG;
+    U1 u1_t_cmd;
+    U1 u1_t_status; // 送信結果を格納
+
+    switch(u1_s_sequence_num) {
+        case 0U: /* ページアドレス設定 */
+            u1_t_cmd = (0xB0 | (0x07 & st_g_lcd_ctrl.cursor_page)); // ページは通常0-7
+            u1_t_status = u1_lcd_send_cmd(&u1_t_cmd, 1U);
+            if(u1_t_status == STD_RETURN_OK) u1_s_sequence_num++;
+            break;
+
+        case 1U: /* 列アドレス下位4ビット */
+            u1_t_cmd = (0x00 | (0x0F & st_g_lcd_ctrl.cursor_column));
+            u1_t_status = u1_lcd_send_cmd(&u1_t_cmd, 1U);
+            if(u1_t_status == STD_RETURN_OK) u1_s_sequence_num++;
+            break;
+
+        case 2U: /* 列アドレス上位4ビット */
+            u1_t_cmd = (0x10 | (0x0F & (st_g_lcd_ctrl.cursor_column >> 4U)));
+            u1_t_status = u1_lcd_send_cmd(&u1_t_cmd, 1U);
+            if(u1_t_status == STD_RETURN_OK) u1_s_sequence_num++;
+            break;
+
+        default:
+            u1_s_sequence_num = 0U;
+            u1_t_ret = STD_RETURN_OK;
+            break;
+    }
+    return u1_t_ret;
+}
+
 /*!
 @brief 文字送信処理
 @param u1_a_char 送信文字
@@ -383,6 +449,35 @@ U1 u1_lcd_send_cmd_set(ST_LCD_CMD_SET *pst_a_cmd_set) {
     memcpy(&au1_t_buffer[1], pst_a_cmd_set->au1_cmd_buf, pst_a_cmd_set->u1_len);
 
     fg_t_func_result = fg_i2c_if_request_tx(LCD_ADDRESS, au1_t_buffer, u1_t_len);
+
+    if (fg_t_func_result == true) {
+        u1_t_ret = STD_RETURN_OK;
+    } else {
+        u1_t_ret = STD_RETURN_NG;
+    }
+
+    return u1_t_ret;
+}
+
+/*!
+@brief コマンド送信処理
+@param au1_a_data_buf
+@param au1_a_len
+@return STD_RETURN_OK:初期化完了
+@return STD_RETURN_NG:初期化中
+@details LCDにデータを送信する。1Byte目に0x00を設定し、2Byte目以降にコマンドを設定する。
+*/
+U1 u1_lcd_send_cmd(U1 *au1_a_data_buf, U1 au1_a_len) {
+    U1 u1_t_len;
+    FG fg_t_func_result;
+    U1 u1_t_ret;
+
+    u1_t_len = au1_a_len + 1;
+
+    st_g_lcd_ctrl.send_buf[0] = 0x00;
+    memcpy(&st_g_lcd_ctrl.send_buf[1], au1_a_data_buf, au1_a_len);
+
+    fg_t_func_result = fg_i2c_if_request_tx(LCD_ADDRESS, st_g_lcd_ctrl.send_buf, u1_t_len);
 
     if (fg_t_func_result == true) {
         u1_t_ret = STD_RETURN_OK;
@@ -464,25 +559,7 @@ U1 u1_lcd_send_data(U1 *au1_a_data_buf, U1 au1_a_len) {
 //     return u1_t_ret;
 // }
 
-// /*
-// function name: u1_lcd_set_cursor
-// description: request LCD set cursor
-// parameters: none
-// return value: STD_RETURN_OK if set cursor request is accepted, STD_RETURN_NG if set cursor request is rejected
-// remarks: if LCD is busy with another task, set cursor request is rejected
-//          if set cursor request is accepted, state machine is set to set cursor state
-// */
-// U1 u1_lcd_set_cursor(U1 u1_a_page, U1 u1_a_column){
-//     U1 u1_t_ret;
-//     u1_t_ret = STD_RETURN_NG;
-//     if (st_g_lcd_ctrl.state == LCD_STM_IDLE) {
-//         st_g_lcd_ctrl.state = LCD_STM_SET_CURSOR;
-//         st_g_lcd_ctrl.cursor_page = u1_a_page;
-//         st_g_lcd_ctrl.cursor_columun = u1_a_column;
-//         u1_t_ret = STD_RETURN_OK;
-//     }
-//     return u1_t_ret;
-// }
+
 
 // /*
 // function name: u1_lcd_get_state
@@ -513,45 +590,6 @@ U1 u1_lcd_send_data(U1 *au1_a_data_buf, U1 au1_a_len) {
 // }
 
 
-// /*
-// function name: u1_lcd_set_cursor_task
-// description: request LCD set cursor
-// parameters: none
-// return value: STD_RETURN_OK if set cursor request is accepted, STD_RETURN_NG if set cursor request is rejected
-// remarks: if LCD is busy with another task, set cursor request is rejected
-//          if set cursor request is accepted, state machine is set to set cursor state
-// */
-// U1 u1_lcd_set_cursor_task(VD){
-//     static U1 u1_s_sequence_num = 0U;
-//     U1 u1_t_ret;
-//     U1 u1_t_cmd;
-//     /* if LCD is busy with another task, return NG */
-//     u1_t_ret = STD_RETURN_NG;
-
-//     /* set cursor command */
-//     if(u1_s_sequence_num == 0U){
-//         /* set page address */
-//         u1_t_cmd = (0xB0 | (0x0F & st_g_lcd_ctrl.cursor_page));
-//         u1_lcd_send_cmd(&u1_t_cmd, 1U);
-//         u1_s_sequence_num++;
-//     }else if(u1_s_sequence_num == 1U){
-//         /* set column address */
-//         /* lower 4 bits */
-//         u1_t_cmd = (0x00 | (0x0F & st_g_lcd_ctrl.cursor_columun));
-//         u1_lcd_send_cmd(&u1_t_cmd, 1U);
-//         u1_s_sequence_num++;   
-//     }else if(u1_s_sequence_num == 2U){
-//         /* set column address */
-//         /* upper 4 bits */
-//         u1_t_cmd = (0x10 | (0x0F & (st_g_lcd_ctrl.cursor_columun >> 4U)));
-//         u1_lcd_send_cmd(&u1_t_cmd, 1U);
-//         u1_s_sequence_num++;
-//     }else{
-//         u1_s_sequence_num = 0U;
-//         u1_t_ret = STD_RETURN_OK;
-//     }
-//     return u1_t_ret;
-// }
 
 
 

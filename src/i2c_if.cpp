@@ -3,6 +3,8 @@
 #include "i2c_if.h"
 #include "i2c_hw.h"
 
+#define I2C_IF_DEBUG_LEVEL 0
+
 #define U1_I2C_IF_BUFFER_MAX_SIZE 16
 
 typedef enum
@@ -27,9 +29,10 @@ typedef struct
     U1 tx_len;
     U1 tx_idx;
 
-    U1 au1_rx_buf[U1_I2C_IF_BUFFER_MAX_SIZE];
+    U1 * pau1_rx_buf;
     U1 rx_len;
     U1 rx_idx;
+    U1 rx_is_complete;
 } ST_I2C_IF_CTRL;
 
 static ST_I2C_IF_CTRL st_g_i2c_if_ctrl;
@@ -38,6 +41,7 @@ VD fn_i2c_if_init(VD)
 {
     fn_i2c_hw_init();
     st_g_i2c_if_ctrl.state = I2C_STATE_IDLE;
+    st_g_i2c_if_ctrl.rx_is_complete = 1;
 }
 
 /*!
@@ -60,11 +64,13 @@ VD fn_i2c_if_cyc(VD)
             break;
 
         case I2C_STATE_SLA:
-            // スタートコンディション送信完了待ち
             if (!fg_i2c_hw_is_complete()) break;
             
+            // ステータスチェック（オプション：エラー処理を入れるならここ）
             // スレーブアドレス送信
             fn_i2c_hw_write((st_g_i2c_if_ctrl.u1_a_tgt_addr << 1) | st_g_i2c_if_ctrl.rw);
+            
+            // 受信/送信それぞれの「待機」が必要な状態へ遷移
             st_g_i2c_if_ctrl.state = (st_g_i2c_if_ctrl.rw == 0)
                                 ? I2C_STATE_TX
                                 : I2C_STATE_RX;
@@ -86,17 +92,28 @@ VD fn_i2c_if_cyc(VD)
                 st_g_i2c_if_ctrl.state = I2C_STATE_STOP;
             }
             break;
-
+        
         case I2C_STATE_RX:
+            // 前の動作（SLA送信 or 前のバイト受信）の完了待ち
             if (!fg_i2c_hw_is_complete()) break;
 
-            if (st_g_i2c_if_ctrl.rx_idx + 1 < st_g_i2c_if_ctrl.rx_len)
-            {
-                st_g_i2c_if_ctrl.au1_rx_buf[st_g_i2c_if_ctrl.rx_idx++] = fn_i2c_hw_read_ack();
+            // 重要：受信したデータをバッファに格納
+            // 最初の1回目（idx=0）はSLA送信完了直後のため、まだデータは無い
+            if (st_g_i2c_if_ctrl.rx_idx > 0) {
+                st_g_i2c_if_ctrl.pau1_rx_buf[st_g_i2c_if_ctrl.rx_idx - 1] = TWDR;
             }
-            else
-            {
-                st_g_i2c_if_ctrl.au1_rx_buf[st_g_i2c_if_ctrl.rx_idx++] = fn_i2c_hw_read_nack();
+
+            // 全件受信完了判定
+            if (st_g_i2c_if_ctrl.rx_idx < st_g_i2c_if_ctrl.rx_len) {
+                // 次の1バイトを受信開始指示
+                if (st_g_i2c_if_ctrl.rx_idx + 1 < st_g_i2c_if_ctrl.rx_len) {
+                    fn_i2c_hw_request_read_ack(); // ACKを返して次を要求
+                } else {
+                    fn_i2c_hw_request_read_nack(); // 最後はNACKを返して終了
+                }
+                st_g_i2c_if_ctrl.rx_idx++;
+            } else {
+                // すべて受信して格納済み
                 st_g_i2c_if_ctrl.state = I2C_STATE_STOP;
             }
             break;
@@ -108,6 +125,9 @@ VD fn_i2c_if_cyc(VD)
             break;
 
         case I2C_STATE_DONE:
+            if(st_g_i2c_if_ctrl.rx_is_complete == 0){
+                st_g_i2c_if_ctrl.rx_is_complete = 1;
+            }
             st_g_i2c_if_ctrl.state = I2C_STATE_IDLE;
             break;
 
@@ -133,7 +153,6 @@ FG fg_i2c_if_request_tx(U1 u1_a_tgt_addr, const U1 *pau1_a_buf, U1 u1_a_len)
     U1 u1_t_index;
 
     // 引数チェック
-    
     // NULLポインタチェック
     if(pau1_a_buf == NULL)
     {
@@ -172,28 +191,48 @@ FG fg_i2c_if_request_tx(U1 u1_a_tgt_addr, const U1 *pau1_a_buf, U1 u1_a_len)
     // I2C状態をスタート状態に設定
     st_g_i2c_if_ctrl.state = I2C_STATE_START;
 
+#if I2C_IF_DEBUG_LEVEL >= 1
+    Serial.print("I2C IF TX Request: Addr=0x");
+    Serial.println(u1_a_tgt_addr, HEX);
+#endif
     // 送信要求成功
     return true;
 }
 
 FG fg_i2c_if_request_rx(U1 u1_a_tgt_addr, U1 *pau1_a_buf,U1 u1_a_len)
-{
-    /* TBD */
+{    
+    if (st_g_i2c_if_ctrl.state != I2C_STATE_IDLE) {
+        Serial.print("I2C IF RX Request Error: I2C Busy. Current State: ");  
+        Serial.println(st_g_i2c_if_ctrl.state);
+        return false;
+    }
+    if (st_g_i2c_if_ctrl.rx_is_complete == 0){
+        Serial.println("I2C IF RX Request Error: Previous RX Not Complete");
+        return false;
+    }
     
-    //if (st_g_i2c_if_ctrl.state != I2C_STATE_IDLE) return false;
-//
-    //st_g_i2c_if_ctrl.u1_a_tgt_addr = u1_a_tgt_addr;
-    //st_g_i2c_if_ctrl.rw = 1;
-    //st_g_i2c_if_ctrl.au1_rx_buf = pau1_a_buf;
-    //st_g_i2c_if_ctrl.rx_len = u1_a_len;
-    //
-//
-    //st_g_i2c_if_ctrl.rx_idx = 0;
-    //st_g_i2c_if_ctrl.state = I2C_STATE_START;
+    st_g_i2c_if_ctrl.u1_a_tgt_addr = u1_a_tgt_addr;
+    st_g_i2c_if_ctrl.rw = 1;
+    st_g_i2c_if_ctrl.pau1_rx_buf = pau1_a_buf;
+    st_g_i2c_if_ctrl.rx_len = u1_a_len;
+    st_g_i2c_if_ctrl.rx_is_complete = 1;
+
+    st_g_i2c_if_ctrl.rx_idx = 0;
+    st_g_i2c_if_ctrl.state = I2C_STATE_START;
+
+#if I2C_IF_DEBUG_LEVEL >= 1
+    Serial.print("I2C IF RX Request: Addr=0x");
+    Serial.println(u1_a_tgt_addr, HEX);
+#endif
     return true;
 }
 
 FG fg_i2c_if_is_busy(VD)
 {
     return (st_g_i2c_if_ctrl.state != I2C_STATE_IDLE);
+}
+
+FG fg_i2c_if_is_rx_complete(VD)
+{
+    return (st_g_i2c_if_ctrl.rx_is_complete == 1);
 }
