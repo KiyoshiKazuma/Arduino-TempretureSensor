@@ -6,6 +6,7 @@
 //#include "sensor.h"
 #include "sevenseg.h"
 #include "bme280.h"
+#include "mystring.h"
 
 /*** MACRO DEFINITIONS ***/
 #define U1_SENSOR_TASK 1
@@ -119,7 +120,7 @@ void loop() {
 
   if(fg_g_bme280_task_req == 1){
     fg_g_bme280_task_req = 0;
-    //fn_bme280_cyc();
+    fn_bme280_cyc();
   }
 
   if(fg_g_i2c_task_req == 1){
@@ -205,8 +206,7 @@ VD fn_main_debug_cyc(VD){
   static U1 u1_s_debug_sevenseg_cnt = 0;
 
   // set number to seven segment display
-  Serial.print("Seven Segment Display Number: ");
-  Serial.println(u1_s_debug_sevenseg_cnt);
+
   fn_sevenseg_set_number(u1_s_debug_sevenseg_cnt);
 
   u1_s_debug_sevenseg_cnt++;
@@ -214,34 +214,61 @@ VD fn_main_debug_cyc(VD){
     u1_s_debug_sevenseg_cnt = 0;
   }
 
-  /* i2c_if read debug */
-  static U1 u1_s_debug_i2c_state = 0;
-  
+  /* bme280 debug */  
+  S4 s4_t_actual_temp;
+  s4_t_actual_temp = fn_bme280_get_temperature();
+  Serial.print("Current Temp: ");
+  Serial.print(s4_t_actual_temp / 100); // 整数部
+  Serial.print(".");
+  Serial.println(s4_t_actual_temp % 100); // 小数部
 
-  if(u1_s_debug_i2c_state ==0){
-    if(fg_i2c_if_request_rx(0x50, au1_g_i2c_read_buf, 2)){
-      Serial.println("I2C Read Request to 0x50 Sent");
-      u1_s_debug_i2c_state = 1;
-    }
-  }else if(u1_s_debug_i2c_state ==1){
-    if(fg_i2c_if_is_rx_complete()){
-      Serial.print("I2C Read Complete. Data: 0x");
-      Serial.print(au1_g_i2c_read_buf[0], HEX);
-      Serial.print(" ");
-      Serial.println(au1_g_i2c_read_buf[1], HEX);
-      
-      u1_s_debug_i2c_state = 0;
-    }
-  }
   /* lcd debug */
-  static FG fg_s_dbug_lcd_first_flag = true;
-  U1 au1_debug_lcd_str[] = {"Hello World!"};
-  if(fg_s_dbug_lcd_first_flag == true){
+  static U1 u1_s_debug_lcd_sequence = 0;
+  MYSTRING st_s_debug_lcd_mystring;
+
+  switch (u1_s_debug_lcd_sequence)
+  {
+  case 0:
+    if(fg_lcd_is_busy() == false){
+      Serial.println("LCD set cursor");
+      u1_lcd_set_cursor(0, 0);
+      u1_s_debug_lcd_sequence++;
+    }
+
+  case 1:
     if(fg_lcd_is_busy() == false){
       Serial.println("LCD Print Request: Hello World!");
-      u1_lcd_print_request((const char *)au1_debug_lcd_str);
-      fg_s_dbug_lcd_first_flag = false;
-    }
-  }
 
+      u1_mystring_init(&st_s_debug_lcd_mystring);
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, "Hello World!");
+      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data);      
+      u1_s_debug_lcd_sequence++;
+    }
+    break;
+  
+  case 2:
+    if(fg_lcd_is_busy() == false){
+      Serial.println("LCD set cursor");
+      u1_lcd_set_cursor(2, 0);
+      u1_s_debug_lcd_sequence++;
+    }
+    break;
+  case 3:
+      Serial.println("LCD Print temp data!");
+      u1_mystring_init(&st_s_debug_lcd_mystring);
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, "temp:");      
+      u1_mystring_push_data(&st_s_debug_lcd_mystring, (U4)(s4_t_actual_temp / 100));
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, ".");      
+      u1_mystring_push_data(&st_s_debug_lcd_mystring, (U4)(s4_t_actual_temp % 100));      
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, "C");
+
+      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data);      
+      u1_s_debug_lcd_sequence = 0;
+      break;
+
+    default:
+      u1_s_debug_lcd_sequence = 0;
+      break;
+  }
+  
 }

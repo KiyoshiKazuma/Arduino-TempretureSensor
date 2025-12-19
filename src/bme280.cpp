@@ -3,6 +3,9 @@
 #include "i2c_if.h"
 #include "bme280.h"
 
+//　デバッグレベル
+#define BME280_DEBUG_LEVEL 0
+
 // I2Cスレーブアドレス
 #define BME280_SLAVE_ADDR   0x76
 
@@ -25,39 +28,31 @@
 #define BME280_LEN_MEASUREMENT      8
 
 // 状態遷移の定義
-typedef enum
-{
-    BME280_STATE_INIT = 0,
-    BME280_STATE_IDLE = 1,
-
-    // 補正パラメータ読み出しフェーズ
-    BME280_STATE_CALIB_T_P_REQ,     // 温度・気圧補正パラメータ読み出し要求
-    BME280_STATE_CALIB_T_P_WAIT,    // 待機
-    BME280_STATE_CALIB_H1_REQ,      // 湿度補正パラメータH1読み出し要求
-    BME280_STATE_CALIB_H1_WAIT,     // 待機
-    BME280_STATE_CALIB_H2_H6_REQ,   // 湿度補正パラメータH2-H6読み出し要求
-    BME280_STATE_CALIB_H2_H6_WAIT,  // 待機
-    BME280_STATE_CALIB_DONE,        // 完了
-
-    // 制御レジスタ書き込みフェーズ (初期設定)
-    BME280_STATE_CTRL_HUM_REQ,      // ctrl_hum書き込み要求
-    BME280_STATE_CTRL_HUM_WAIT,
-    BME280_STATE_CONFIG_REQ,        // config書き込み要求
-    BME280_STATE_CONFIG_WAIT,
-    BME280_STATE_CTRL_MEAS_REQ,     // ctrl_meas書き込み要求 (Normal mode開始)
-    BME280_STATE_CTRL_MEAS_WAIT,
-
-    // 測定値読み出しフェーズ
-    BME280_STATE_MEAS_REQ,          // 測定値読み出し要求
-    BME280_STATE_MEAS_WAIT,
-    
-    BME280_STATE_ERROR
-} EN_BME280_STATE;
+#define BME280_STATE_INIT 0    
+#define BME280_STATE_IDLE 1    
+// 補正パラメータ読み出しフェーズ
+#define BME280_STATE_CALIB_T_P_REQ 2         // 温度・気圧補正パラメータ読み出し要求
+#define BME280_STATE_CALIB_T_P_WAIT 3        // 待機
+#define BME280_STATE_CALIB_H1_REQ 4          // 湿度補正パラメータH1読み出し要求
+#define BME280_STATE_CALIB_H1_WAIT 5         // 待機
+#define BME280_STATE_CALIB_H2_H6_REQ 6       // 湿度補正パラメータH2-H6読み出し要求
+#define BME280_STATE_CALIB_H2_H6_WAIT 7      // 待機
+#define BME280_STATE_CALIB_DONE 8            // 完了    
+// 制御レジスタ書き込みフェーズ (初期設定)
+#define BME280_STATE_CTRL_HUM_REQ 9         // ctrl_hum書き込み要求
+#define BME280_STATE_CTRL_HUM_WAIT 10   
+#define BME280_STATE_CONFIG_REQ 11           // config書き込み要求
+#define BME280_STATE_CONFIG_WAIT 12   
+#define BME280_STATE_CTRL_MEAS_REQ 13        // ctrl_meas書き込み要求 (Normal mode開始)
+#define BME280_STATE_CTRL_MEAS_WAIT 14       // 測定値読み出しフェーズ
+#define BME280_STATE_MEAS_REQ 15             // 測定値読み出し要求
+#define BME280_STATE_MEAS_WAIT 16   
+#define BME280_STATE_ERROR 17   
 
 // 制御構造体
 typedef struct
 {
-    EN_BME280_STATE state;
+    U1 state;
 
     // I2C通信バッファ (最大長 + 1(レジスタアドレス用))
     U1 au1_i2c_tx_buf[BME280_LEN_MEASUREMENT + 1];
@@ -120,6 +115,7 @@ VD fn_bme280_cyc(VD)
             // I2C送信が完了したら、受信要求
             if (fg_i2c_if_request_rx(BME280_SLAVE_ADDR, st_g_bme280_ctrl.au1_calib_t_p, BME280_LEN_CALIB_T_P))
             {
+                
                 st_g_bme280_ctrl.state = BME280_STATE_CALIB_H1_REQ;
                 
             }
@@ -257,6 +253,15 @@ VD fn_bme280_cyc(VD)
                 // 受信要求が成功したら、次の周期で再度MEAS_REQへ遷移
                 // データの格納は完了しているので、次のI2C通信のためにIDLEへ
                 st_g_bme280_ctrl.state = BME280_STATE_IDLE; 
+
+                #if BME280_DEBUG_LEVEL >= 1
+                Serial.print("BME280 MEASUREMENT DATA : ");
+                for(int i = 0; i < BME280_LEN_MEASUREMENT; i++){
+                    Serial.print(st_g_bme280_ctrl.au1_raw_measurement[i], HEX);
+                    Serial.print(" ");
+                }
+                Serial.println();
+                #endif //debug
                 
             }
             break;
@@ -265,7 +270,7 @@ VD fn_bme280_cyc(VD)
         case BME280_STATE_IDLE:
             // 一定時間後に測定値の読み出しを再開
             // ここでは簡易的に、次の周期タスクで即座に再開としています
-            st_g_bme280_ctrl.state = BME280_STATE_MEAS_REQ;
+            st_g_bme280_ctrl.state = BME280_STATE_CTRL_MEAS_REQ;
             
             break;
             
@@ -283,6 +288,48 @@ VD fn_bme280_cyc(VD)
 }
 
 VD fn_bme280_state_change(VD){
+#if BME280_DEBUG_LEVEL >= 2
     Serial.print("BME280 State Change to : ");
     Serial.println(st_g_bme280_ctrl.state);
+#endif
+}
+
+/**
+ * @brief  BME280 温度物理量取得関数
+ * @return S4 摂氏温度（単位：0.01℃ / 例：2505 は 25.05℃ を表す）
+ * ※データが未取得の場合は 0 を返します。
+ */
+S4 fn_bme280_get_temperature(VD)
+{
+    S4 s4_t_adc;
+    S4 s4_t_var1, s4_t_var2, s4_t_fine, s4_t_temp;
+    U2 u2_t_dig_t1;
+    S2 s2_t_dig_t2, s2_t_dig_t3;
+
+    /* 1. 測定が完了しているか（IDLE状態以降か）確認 */
+    if (st_g_bme280_ctrl.state < BME280_STATE_IDLE)
+    {
+        return 0;
+    }
+
+    /* 2. 温度ADC値の抽出 (20bit) */
+    /* au1_raw_measurement[0-2]は気圧、[3-5]が温度 */
+    s4_t_adc = (S4)((((U4)st_g_bme280_ctrl.au1_raw_measurement[3]) << 12) |
+                   (((U4)st_g_bme280_ctrl.au1_raw_measurement[4]) << 4)  |
+                   (((U4)st_g_bme280_ctrl.au1_raw_measurement[5]) >> 4));
+
+    /* 3. 補正パラメータの抽出 (Little Endian) */
+    u2_t_dig_t1 = (U2)((st_g_bme280_ctrl.au1_calib_t_p[1] << 8) | st_g_bme280_ctrl.au1_calib_t_p[0]);
+    s2_t_dig_t2 = (S2)((st_g_bme280_ctrl.au1_calib_t_p[3] << 8) | st_g_bme280_ctrl.au1_calib_t_p[2]);
+    s2_t_dig_t3 = (S2)((st_g_bme280_ctrl.au1_calib_t_p[5] << 8) | st_g_bme280_ctrl.au1_calib_t_p[4]);
+
+    /* 4. データシート記載の補正演算 (32bit版) */
+    s4_t_var1 = ((((s4_t_adc >> 3) - ((S4)u2_t_dig_t1 << 1))) * ((S4)s2_t_dig_t2)) >> 11;
+
+    s4_t_var2 = (((((s4_t_adc >> 4) - ((S4)u2_t_dig_t1)) * ((s4_t_adc >> 4) - ((S4)u2_t_dig_t1))) >> 12) * ((S4)s2_t_dig_t3)) >> 14;
+
+    s4_t_fine = s4_t_var1 + s4_t_var2;
+    s4_t_temp = (s4_t_fine * 5 + 128) >> 8;
+
+    return s4_t_temp;
 }
