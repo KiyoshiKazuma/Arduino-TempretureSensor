@@ -68,6 +68,25 @@ U1 fn_i2c_hw_read_nack(VD)
     return TWDR;
 }
 
+// i2c_hw.cpp
+
+// 単に受信を開始させるだけの関数に変更
+VD fn_i2c_hw_request_read_ack(VD)
+{
+    TWCR = (1<<TWINT)|(1<<TWEN)|(1<<TWEA);
+}
+
+VD fn_i2c_hw_request_read_nack(VD)
+{
+    TWCR = (1<<TWINT)|(1<<TWEN);
+}
+
+// データ読み出しは TWDR を直接参照するか、以下の単純な関数にする
+U1 fn_i2c_hw_get_data(VD)
+{
+    return TWDR;
+}
+
 FG fg_i2c_hw_is_complete(VD)
 {
     return (TWCR & (1<<TWINT)) != 0;

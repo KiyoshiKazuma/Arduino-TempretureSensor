@@ -25,6 +25,11 @@ U1 fn_i2c_hw_read_nack(VD);
 FG fg_i2c_hw_is_complete(VD);
 EN_I2C_HW_STATUS fn_i2c_hw_get_status(VD);
 
+
+VD fn_i2c_hw_request_read_ack(VD);
+VD fn_i2c_hw_request_read_nack(VD);
+U1 fn_i2c_hw_get_data(VD);
+
 #endif /* I2C_HW_H */
 
 /*

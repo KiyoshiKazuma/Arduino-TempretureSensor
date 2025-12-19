@@ -20,6 +20,7 @@
 #define DEBUG_LEVEL 0
 
 /*** GLOBAL VARIABLES DEFINITION ***/
+U1 au1_g_i2c_read_buf[2] = {0,1};
 
 /*** LOCAL VARIABLES DEFINITION ***/
 volatile unsigned long toggle_counter = 0;
@@ -118,7 +119,7 @@ void loop() {
 
   if(fg_g_bme280_task_req == 1){
     fg_g_bme280_task_req = 0;
-    fn_bme280_cyc();
+    //fn_bme280_cyc();
   }
 
   if(fg_g_i2c_task_req == 1){
@@ -213,6 +214,25 @@ VD fn_main_debug_cyc(VD){
     u1_s_debug_sevenseg_cnt = 0;
   }
 
+  /* i2c_if read debug */
+  static U1 u1_s_debug_i2c_state = 0;
+  
+
+  if(u1_s_debug_i2c_state ==0){
+    if(fg_i2c_if_request_rx(0x50, au1_g_i2c_read_buf, 2)){
+      Serial.println("I2C Read Request to 0x50 Sent");
+      u1_s_debug_i2c_state = 1;
+    }
+  }else if(u1_s_debug_i2c_state ==1){
+    if(fg_i2c_if_is_rx_complete()){
+      Serial.print("I2C Read Complete. Data: 0x");
+      Serial.print(au1_g_i2c_read_buf[0], HEX);
+      Serial.print(" ");
+      Serial.println(au1_g_i2c_read_buf[1], HEX);
+      
+      u1_s_debug_i2c_state = 0;
+    }
+  }
   /* lcd debug */
   static FG fg_s_dbug_lcd_first_flag = true;
   U1 au1_debug_lcd_str[] = {"Hello World!"};
@@ -223,4 +243,5 @@ VD fn_main_debug_cyc(VD){
       fg_s_dbug_lcd_first_flag = false;
     }
   }
+
 }

@@ -169,6 +169,9 @@ VD fn_lcd_init(VD)
 VD fn_lcd_cyc(VD)
 {
     U1 u1_t_func_result;
+    U1 u1_t_start_state;
+
+    u1_t_start_state = st_g_lcd_ctrl.state;
 
     switch (st_g_lcd_ctrl.state) {
         case LCD_STM_IDLE:
@@ -209,6 +212,13 @@ VD fn_lcd_cyc(VD)
         default:
             st_g_lcd_ctrl.state = LCD_STM_IDLE;
             break;
+    }
+
+    if (u1_t_start_state != st_g_lcd_ctrl.state) {
+        Serial.print("LCD State Changed: ");
+        Serial.print(u1_t_start_state);
+        Serial.print(" -> ");
+        Serial.println(st_g_lcd_ctrl.state);
     }
 
     return;
