@@ -202,17 +202,6 @@ VD fn_main_task_end(U1 u1_task_id) {
 VD fn_main_debug_cyc(VD){
   Serial.println("Debug Cycle Start");
 
-  /* seven segment debug */
-  static U1 u1_s_debug_sevenseg_cnt = 0;
-
-  // set number to seven segment display
-
-  fn_sevenseg_set_number(u1_s_debug_sevenseg_cnt);
-
-  u1_s_debug_sevenseg_cnt++;
-  if(u1_s_debug_sevenseg_cnt >= 100){
-    u1_s_debug_sevenseg_cnt = 0;
-  }
 
   /* bme280 debug */  
   S4 s4_t_actual_temp;
@@ -221,6 +210,8 @@ VD fn_main_debug_cyc(VD){
   Serial.print(s4_t_actual_temp / 100); // 整数部
   Serial.print(".");
   Serial.println(s4_t_actual_temp % 100); // 小数部
+
+  fn_sevenseg_set_number((U1)(s4_t_actual_temp / 100));
 
   /* lcd debug */
   static U1 u1_s_debug_lcd_sequence = 0;
