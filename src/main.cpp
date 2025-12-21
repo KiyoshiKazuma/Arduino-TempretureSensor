@@ -7,6 +7,7 @@
 #include "sevenseg.h"
 #include "bme280.h"
 #include "mystring.h"
+#include "joystick.h"
 
 /*** MACRO DEFINITIONS ***/
 #define U1_SENSOR_TASK 1
@@ -31,6 +32,7 @@ FG fg_g_sevenseg_task_req = 0;
 FG fg_g_i2c_task_req = 0;
 FG fg_g_debug_req = 0;
 FG fg_g_bme280_task_req = 0;
+FG fg_g_joystick_task_req = 0;
 
 U4 u4_g_startTime;
 U4 u4_g_endTime;
@@ -78,6 +80,7 @@ void setup() {
   fg_g_sevenseg_task_req = 0;
   fg_g_bme280_task_req = 0;
   fg_g_debug_req = 0;
+  fg_g_joystick_task_req = 0;
   
   // 下記機能の初期化
   Serial.begin(9600);
@@ -89,6 +92,7 @@ void setup() {
   fn_i2c_if_init();
   fn_lcd_init();
   fn_bme280_init();
+  fn_joystick_init();
   //fn_sensor_init();
 
   // Timer1の設定を呼び出し(計測開始)
@@ -123,6 +127,11 @@ void loop() {
     fn_bme280_cyc();
   }
 
+  if(fg_g_joystick_task_req == 1){
+    fg_g_joystick_task_req = 0;
+    fn_joystick_cyc();
+  }
+
   if(fg_g_i2c_task_req == 1){
     //fg_g_i2c_task_req = 0;
     fn_main_task_start(U1_I2C_TASK);
@@ -145,7 +154,7 @@ ISR(TIMER1_COMPA_vect) {
   // 1msごとにカウンターをインクリメント
   toggle_counter++;
 
-  if (toggle_counter >= 1000) {
+  if (toggle_counter >= 100) {
     fg_g_sensor_task_req = 1;
     fg_g_debug_req = 1;
     toggle_counter = 0;  // カウンターをリセット
@@ -154,6 +163,7 @@ ISR(TIMER1_COMPA_vect) {
   fg_g_sevenseg_task_req = 1;
   fg_g_i2c_task_req = 1;
   fg_g_bme280_task_req = 1;
+  fg_g_joystick_task_req = 1;
 }
 
 VD fn_main_task_start(U1 u1_task_id) {
@@ -202,16 +212,42 @@ VD fn_main_task_end(U1 u1_task_id) {
 VD fn_main_debug_cyc(VD){
   Serial.println("Debug Cycle Start");
 
+  /* joystick debug */
+  U1 u1_t_debug_joystick_xdata;
+  U1 u1_t_debug_joystick_ydata;
+  U1 u1_t_debug_joystick_buttondata;
+
+  u1_t_debug_joystick_xdata = u1_joycon_x_data();
+  u1_t_debug_joystick_ydata = u1_joycon_y_data();
+  u1_t_debug_joystick_buttondata = u1_joycon_botton_data();
+
 
   /* bme280 debug */  
+  static U1 u1_t_debug_bme280_sequence = 0;
   S4 s4_t_actual_temp;
-  s4_t_actual_temp = fn_bme280_get_temperature();
-  Serial.print("Current Temp: ");
-  Serial.print(s4_t_actual_temp / 100); // 整数部
-  Serial.print(".");
-  Serial.println(s4_t_actual_temp % 100); // 小数部
 
-  fn_sevenseg_set_number((U1)(s4_t_actual_temp / 100));
+  switch (u1_t_debug_bme280_sequence)
+  {
+  case 0:
+    if(fg_bme280_request()){
+      u1_t_debug_bme280_sequence++;
+    }
+    break;
+  case 1:
+    s4_t_actual_temp = fn_bme280_get_temperature();
+    Serial.print("Current Temp: ");
+    Serial.print(s4_t_actual_temp / 100); // 整数部
+    Serial.print(".");
+    Serial.println(s4_t_actual_temp % 100); // 小数部
+
+    fn_sevenseg_set_number((U1)(s4_t_actual_temp / 100));
+
+    break;
+
+  
+  default:
+    break;
+  }
 
   /* lcd debug */
   static U1 u1_s_debug_lcd_sequence = 0;
@@ -232,7 +268,7 @@ VD fn_main_debug_cyc(VD){
 
       u1_mystring_init(&st_s_debug_lcd_mystring);
       u1_mystring_push_string(&st_s_debug_lcd_mystring, "Hello World!");
-      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data);      
+      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data); 
       u1_s_debug_lcd_sequence++;
     }
     break;
@@ -253,9 +289,30 @@ VD fn_main_debug_cyc(VD){
       u1_mystring_push_data(&st_s_debug_lcd_mystring, (U4)(s4_t_actual_temp % 100));      
       u1_mystring_push_string(&st_s_debug_lcd_mystring, "C");
 
-      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data);      
-      u1_s_debug_lcd_sequence = 0;
+      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data);    
+      u1_s_debug_lcd_sequence++;
       break;
+
+    case 4:
+      if(fg_lcd_is_busy() == false){
+        Serial.println("LCD set cursor");
+        u1_lcd_set_cursor(4, 0);
+        u1_s_debug_lcd_sequence++;
+      }
+      break;
+    
+    case 5:
+      u1_mystring_init(&st_s_debug_lcd_mystring);
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, "joy:");      
+      u1_mystring_push_data(&st_s_debug_lcd_mystring, (U4)(u1_t_debug_joystick_xdata));
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, ":");      
+      u1_mystring_push_data(&st_s_debug_lcd_mystring, (U4)(u1_t_debug_joystick_ydata));
+      u1_mystring_push_string(&st_s_debug_lcd_mystring, ":");      
+      u1_mystring_push_data(&st_s_debug_lcd_mystring, (U4)(u1_t_debug_joystick_buttondata));
+
+      u1_lcd_print_request(st_s_debug_lcd_mystring.au1_data);    
+      u1_s_debug_lcd_sequence = 2;
+      
 
     default:
       u1_s_debug_lcd_sequence = 0;

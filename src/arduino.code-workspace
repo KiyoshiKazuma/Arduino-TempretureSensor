@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../programing/arduino"
+		},
+		{
+			"name": "TempretureSensor",
+			"path": ".."
+		},
+		{
+			"name": "LCDtest",
+			"path": "../../LCDtest"
+		}
+	],
+	"settings": {}
+}

@@ -270,7 +270,6 @@ VD fn_bme280_cyc(VD)
         case BME280_STATE_IDLE:
             // 一定時間後に測定値の読み出しを再開
             // ここでは簡易的に、次の周期タスクで即座に再開としています
-            st_g_bme280_ctrl.state = BME280_STATE_CTRL_MEAS_REQ;
             
             break;
             
@@ -332,4 +331,22 @@ S4 fn_bme280_get_temperature(VD)
     s4_t_temp = (s4_t_fine * 5 + 128) >> 8;
 
     return s4_t_temp;
+}
+
+/**
+ * @brief  BME280 データ取得要求
+ * @return true:要求成功
+ * @return false:要求失敗(ビジー)
+ */
+FG fg_bme280_request(VD){
+    FG fg_t_ret;
+
+    if(st_g_bme280_ctrl.state == BME280_STATE_IDLE){
+        st_g_bme280_ctrl.state = BME280_STATE_CTRL_MEAS_REQ;
+        fg_t_ret = true;
+    }else{
+        fg_t_ret = false;
+    }
+
+    return fg_t_ret;
 }

@@ -202,12 +202,16 @@ FG fg_i2c_if_request_tx(U1 u1_a_tgt_addr, const U1 *pau1_a_buf, U1 u1_a_len)
 FG fg_i2c_if_request_rx(U1 u1_a_tgt_addr, U1 *pau1_a_buf,U1 u1_a_len)
 {    
     if (st_g_i2c_if_ctrl.state != I2C_STATE_IDLE) {
+        #if I2C_IF_DEBUG_LEVEL >= 1
         Serial.print("I2C IF RX Request Error: I2C Busy. Current State: ");  
         Serial.println(st_g_i2c_if_ctrl.state);
+        #endif // debug
         return false;
     }
     if (st_g_i2c_if_ctrl.rx_is_complete == 0){
+        #if I2C_IF_DEBUG_LEVEL >= 1
         Serial.println("I2C IF RX Request Error: Previous RX Not Complete");
+        #endif // debug
         return false;
     }
     

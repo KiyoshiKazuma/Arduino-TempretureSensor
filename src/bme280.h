@@ -3,6 +3,7 @@
 
 VD fn_bme280_init(VD);
 VD fn_bme280_cyc(VD);
+FG fg_bme280_request(VD);
 S4 fn_bme280_get_temperature(VD);
 
 #endif // BME280_H
